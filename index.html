@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ZX STUDIO | 系统控制台 (最终安全版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(71, 85, 105, 0.5); }
+        .tab-active { border-bottom: 2px solid #38bdf8; color: #38bdf8; }
+        input, select, button { touch-action: manipulation; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- 加密登录网关 -->
+    <div id="authGateway" class="fixed inset-0 z-50 bg-[#0f172a] flex items-center justify-center">
+        <div class="glass-panel p-8 rounded-xl w-full max-w-sm mx-4 flex flex-col items-center">
+            <div class="w-12 h-12 bg-sky-500 rounded flex items-center justify-center font-bold text-slate-900 text-xl mb-4">ZX</div>
+            <h2 class="text-xl font-bold tracking-widest mb-6">STUDIO MGT</h2>
+            <form id="loginForm" class="w-full space-y-4">
+                <div>
+                    <input type="email" id="loginEmail" placeholder="管理员账号" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500 text-center">
+                </div>
+                <div>
+                    <input type="password" id="loginPassword" placeholder="访问密钥" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500 text-center">
+                </div>
+                <button type="submit" id="loginBtn" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-900 font-bold py-3 rounded-lg mt-2 transition-colors">安全登入</button>
+            </form>
+            <div id="loginError" class="text-rose-500 text-sm mt-4 hidden text-center font-bold"></div>
+        </div>
+    </div>
+
+    <!-- 顶部导航 -->
+    <header class="glass-panel sticky top-0 z-10 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-sky-500 rounded flex items-center justify-center font-bold text-slate-900">ZX</div>
+            <h1 class="text-xl font-bold tracking-wider">STUDIO MGT <span id="sync-status" class="text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded ml-2">验证中...</span></h1>
+        </div>
+        <div class="flex gap-4 md:gap-6 text-sm font-medium items-center">
+            <button onclick="switchTab('dashboard')" id="tab-dashboard" class="pb-1 tab-active transition-colors">大盘</button>
+            <button onclick="switchTab('ledger')" id="tab-ledger" class="pb-1 text-slate-400 hover:text-slate-200 transition-colors">记账</button>
+            <button onclick="switchTab('inventory')" id="tab-inventory" class="pb-1 text-slate-400 hover:text-slate-200 transition-colors">仓储</button>
+            <button onclick="logout()" class="text-xs text-rose-400 hover:text-rose-300 ml-2">退出</button>
+        </div>
+    </header>
+
+    <!-- 主体内容区 -->
+    <main class="flex-1 overflow-y-auto p-6 space-y-6 hidden" id="mainContent">
+        
+        <!-- 大盘看板 -->
+        <div id="view-dashboard" class="space-y-6 block">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="glass-panel p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">总营收 (¥)</div>
+                    <div class="text-2xl font-bold text-emerald-400"><span id="stat-revenue">0.00</span></div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">材料总成本 (¥)</div>
+                    <div class="text-2xl font-bold text-rose-400"><span id="stat-cost">0.00</span></div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">预估净利润 (¥)</div>
+                    <div class="text-2xl font-bold text-sky-400"><span id="stat-profit">0.00</span></div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">历史总单量</div>
+                    <div class="text-2xl font-bold"><span id="stat-orders">0</span> 单</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 流水记账 -->
+        <div id="view-ledger" class="hidden space-y-6">
+            <div class="glass-panel p-6 rounded-xl max-w-2xl mx-auto">
+                <h2 class="text-lg font-bold mb-6">➕ 录入新订单</h2>
+                <form id="orderForm" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">商品名称</label>
+                            <input type="text" id="orderItem" placeholder="如: 1/100 大魔 全GK" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">交易金额 (¥)</label>
+                            <input type="number" id="orderAmount" step="0.01" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">款项类型</label>
+                            <select id="orderType" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500">
+                                <option value="定金">定金</option>
+                                <option value="尾款">尾款</option>
+                                <option value="全款">全款</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">渠道来源</label>
+                            <select id="orderChannel" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500">
+                                <option value="B站">哔哩哔哩 (B站)</option>
+                                <option value="小红书">小红书</option>
+                                <option value="闲鱼">闲鱼</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-900 font-bold py-3 rounded-lg mt-4 transition-colors">确认入账</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 仓储物料 -->
+        <div id="view-inventory" class="hidden space-y-6">
+            <div class="flex justify-between items-center max-w-3xl mx-auto mb-4">
+                <h2 class="text-xl font-bold">📦 物料入库</h2>
+                <button onclick="toggleConfigModal(true)" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm transition-colors">⚙️ 配置分类</button>
+            </div>
+
+            <div class="glass-panel p-6 rounded-xl max-w-3xl mx-auto">
+                <form id="inventoryForm" class="space-y-4">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-1">
+                            <label class="block text-sm text-slate-400 mb-1">品牌</label>
+                            <select id="invBrand" onchange="updateCategorySelect()" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white"></select>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label class="block text-sm text-slate-400 mb-1">分类</label>
+                            <select id="invCategory" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white"></select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-slate-400 mb-1">具体名称/型号</label>
+                            <input type="text" id="invName" placeholder="如: 耀金 / 0.8mm 不锈钢" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">采购总价 (¥)</label>
+                            <input type="number" id="invPrice" step="0.01" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">入库数量</label>
+                            <input type="number" id="invQty" min="1" value="1" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full border-2 border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-slate-900 font-bold py-3 rounded-lg mt-4 transition-colors">确认入库并计入支出</button>
+                </form>
+            </div>
+            
+            <!-- 入库记录 -->
+            <div class="glass-panel p-6 rounded-xl max-w-3xl mx-auto">
+                <h3 class="text-slate-400 text-sm mb-4">入库记录概览 (云端同步)</h3>
+                <div id="inventoryList" class="space-y-3 text-sm">
+                    <div class="text-slate-500">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 配置 模态框 -->
+    <div id="configModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="glass-panel w-full max-w-md p-6 rounded-xl max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold">品牌与分类管理</h2>
+                <button onclick="toggleConfigModal(false)" class="text-slate-400 hover:text-white text-xl">&times;</button>
+            </div>
+            <div class="overflow-y-auto flex-1 pr-2 space-y-6">
+                <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
+                    <div class="flex gap-2">
+                        <input type="text" id="newBrandInput" placeholder="输入新品牌名..." class="flex-1 bg-slate-900 rounded p-2 text-sm border border-slate-700 text-white">
+                        <button onclick="addNewBrand()" class="bg-sky-500 text-slate-900 px-3 rounded font-bold text-sm">添加品牌</button>
+                    </div>
+                </div>
+                <div id="configListRender" class="space-y-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase 引擎模块 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        // =========================================================================
+        // 正确的 API 密钥已植入
+        // =========================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyBF2bNGSpr6AIRvtrG6l6hB9fmjPeLFfBI",
+            authDomain: "zxstudio-mgt.firebaseapp.com",
+            projectId: "zxstudio-mgt",
+            storageBucket: "zxstudio-mgt.firebasestorage.app",
+            messagingSenderId: "337938921383",
+            appId: "1:337938921383:web:5183c72e61d31e8da6a882"
+        };
+        // =========================================================================
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        let unsubscribeSnapshot = null;
+        const dataRef = doc(db, "zxstudio", "app_data_v2"); 
+
+        const defaultData = {
+            stats: { revenue: 0, cost: 0, orders: 0 },
+            config: {
+                "匠域": ["普通漆", "金属漆", "保护漆", "功能液"],
+                "紫荆花": ["稀释剂"],
+                "爱乐酷": ["3.0 Pro 树脂", "ABS-like 树脂"],
+                "五金通用": ["铜管", "不锈钢丝"]
+            },
+            logs: []
+        };
+        window.currentData = JSON.parse(JSON.stringify(defaultData));
+
+        // =============== 身份验证逻辑 ===============
+        
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('authGateway').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+                initDatabaseListener();
+            } else {
+                document.getElementById('authGateway').classList.remove('hidden');
+                document.getElementById('mainContent').classList.add('hidden');
+                document.getElementById('sync-status').innerText = '未验证';
+                document.getElementById('sync-status').className = 'text-xs bg-rose-500/20 text-rose-400 px-2 py-1 rounded ml-2';
+            }
+        });
+
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            const email = document.getElementById('loginEmail').value;
+            const pass = document.getElementById('loginPassword').value;
+            
+            btn.innerText = "验证中...";
+            document.getElementById('loginError').classList.add('hidden');
+
+            setPersistence(auth, browserLocalPersistence).then(() => {
+                return signInWithEmailAndPassword(auth, email, pass);
+            }).then(() => {
+                btn.innerText = "安全登入";
+            }).catch((error) => {
+                btn.innerText = "安全登入";
+                const errDiv = document.getElementById('loginError');
+                errDiv.classList.remove('hidden');
+                
+                // 诊断报错原因
+                if (error.code === 'auth/invalid-credential') {
+                    errDiv.innerText = "❌ 邮箱或密码不匹配，请重新核对";
+                } else if (error.code === 'auth/api-key-not-valid') {
+                    errDiv.innerText = "❌ 系统错误: API密钥无效，请检查代码里的 apiKey";
+                } else if (error.code === 'auth/network-request-failed') {
+                    errDiv.innerText = "❌ 网络超时，请检查代理是否为全局模式";
+                } else {
+                    errDiv.innerText = "❌ 报错代码: " + error.code;
+                }
+                console.error("详细错误:", error);
+            });
+        });
+
+        window.logout = function() {
+            if(unsubscribeSnapshot) unsubscribeSnapshot();
+            signOut(auth);
+        };
+
+        // =============== 数据库监听与同步逻辑 ===============
+        
+        function initDatabaseListener() {
+            unsubscribeSnapshot = onSnapshot(dataRef, (docSnap) => {
+                const statusBadge = document.getElementById('sync-status');
+                statusBadge.innerText = '已安全连接';
+                statusBadge.className = 'text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded ml-2';
+                
+                if (docSnap.exists()) {
+                    window.currentData = docSnap.data();
+                } else {
+                    setDoc(dataRef, window.currentData);
+                }
+                refreshAllUI();
+            }, (error) => {
+                if (error.code === 'permission-denied') {
+                    alert('安全拦截：无权限访问数据库。');
+                }
+            });
+        }
+
+        window.syncToCloud = async function() {
+            try {
+                await setDoc(dataRef, window.currentData);
+            } catch (e) {
+                alert('数据同步失败，可能是权限已失效。');
+            }
+        };
+
+        // =============== UI 渲染与表单交互 ===============
+        
+        function refreshAllUI() {
+            try {
+                document.getElementById('stat-revenue').innerText = (window.currentData.stats.revenue || 0).toFixed(2);
+                document.getElementById('stat-cost').innerText = (window.currentData.stats.cost || 0).toFixed(2);
+                document.getElementById('stat-profit').innerText = ((window.currentData.stats.revenue || 0) - (window.currentData.stats.cost || 0)).toFixed(2);
+                document.getElementById('stat-orders').innerText = window.currentData.stats.orders || 0;
+                refreshInventorySelects();
+                renderConfigList();
+                renderInventoryList();
+            } catch (e) { }
+        }
+
+        window.switchTab = function(tabId) {
+            ['dashboard', 'ledger', 'inventory'].forEach(id => {
+                document.getElementById(`view-${id}`).classList.add('hidden');
+                document.getElementById(`tab-${id}`).classList.remove('tab-active', 'text-slate-400');
+                if(id !== tabId) document.getElementById(`tab-${id}`).classList.add('text-slate-400');
+            });
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('tab-active');
+        };
+
+        window.updateCategorySelect = function() {
+            const brandSelect = document.getElementById('invBrand');
+            const categorySelect = document.getElementById('invCategory');
+            if(!brandSelect || !brandSelect.value) return;
+            const selectedBrand = brandSelect.value;
+            const currentCatVal = categorySelect.value;
+            categorySelect.innerHTML = '';
+            (window.currentData.config[selectedBrand] || []).forEach(cat => {
+                categorySelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+            });
+            if(window.currentData.config[selectedBrand] && window.currentData.config[selectedBrand].includes(currentCatVal)) {
+                categorySelect.value = currentCatVal;
+            }
+        };
+
+        function refreshInventorySelects() {
+            const brandSelect = document.getElementById('invBrand');
+            if(!brandSelect) return;
+            const currentVal = brandSelect.value;
+            brandSelect.innerHTML = '';
+            for (let brand in window.currentData.config) {
+                brandSelect.innerHTML += `<option value="${brand}">${brand}</option>`;
+            }
+            if(window.currentData.config[currentVal]) brandSelect.value = currentVal;
+            window.updateCategorySelect();
+        }
+
+        window.toggleConfigModal = function(show) {
+            const modal = document.getElementById('configModal');
+            if (show) modal.classList.remove('hidden');
+            else modal.classList.add('hidden');
+        };
+
+        window.addNewBrand = async function() {
+            const input = document.getElementById('newBrandInput');
+            const name = input.value.trim();
+            if (name && !window.currentData.config[name]) {
+                window.currentData.config[name] = [];
+                input.value = '';
+                await window.syncToCloud();
+            }
+        };
+
+        window.addCategory = async function(brand) {
+            const input = document.getElementById(`newCatInput_${brand}`);
+            const catName = input.value.trim();
+            if (catName && !window.currentData.config[brand].includes(catName)) {
+                window.currentData.config[brand].push(catName);
+                await window.syncToCloud();
+            }
+        };
+
+        window.deleteBrand = async function(brand) {
+            if(confirm(`确定删除品牌 "${brand}" 吗？`)) {
+                delete window.currentData.config[brand];
+                await window.syncToCloud();
+            }
+        };
+
+        window.deleteCategory = async function(brand, catName) {
+            window.currentData.config[brand] = window.currentData.config[brand].filter(c => c !== catName);
+            await window.syncToCloud();
+        };
+
+        function renderConfigList() {
+            const container = document.getElementById('configListRender');
+            if(!container) return;
+            container.innerHTML = '';
+            for (let brand in window.currentData.config) {
+                let catHTML = window.currentData.config[brand].map(cat => `
+                    <span class="inline-flex items-center bg-slate-700 text-xs px-2 py-1 rounded gap-1">
+                        ${cat} <button onclick="deleteCategory('${brand}', '${cat}')" class="text-rose-400 ml-1">×</button>
+                    </span>
+                `).join('');
+                container.innerHTML += `
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
+                        <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                            <span class="font-bold text-sky-400">${brand}</span>
+                            <button onclick="deleteBrand('${brand}')" class="text-xs text-rose-500 hover:text-rose-400">删除</button>
+                        </div>
+                        <div class="flex flex-wrap gap-2 mb-3">${catHTML || '<span class="text-xs text-slate-500">无分类</span>'}</div>
+                        <div class="flex gap-2">
+                            <input type="text" id="newCatInput_${brand}" placeholder="新增分类..." class="flex-1 bg-slate-900 rounded p-1 text-xs border border-slate-700 text-white">
+                            <button onclick="addCategory('${brand}')" class="bg-slate-700 px-2 rounded text-xs">添加</button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        function renderInventoryList() {
+            const list = document.getElementById('inventoryList');
+            if(!list) return;
+            if (!window.currentData.logs || window.currentData.logs.length === 0) { 
+                list.innerHTML = '<div class="text-slate-500">暂无入库记录</div>'; 
+                return; 
+            }
+            list.innerHTML = window.currentData.logs.map(item => `
+                <div class="flex justify-between border-b border-slate-700 pb-2">
+                    <span><span class="text-slate-500 mr-2">[${item.date}]</span><span class="text-sky-400 mr-1">${item.brand}-${item.category}</span> ${item.name}</span>
+                    <span class="font-bold text-slate-300">x${item.qty}</span>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const amount = parseFloat(document.getElementById('orderAmount').value);
+            window.currentData.stats.revenue += amount;
+            window.currentData.stats.orders += 1;
+            await window.syncToCloud();
+            e.target.reset();
+            alert('✅ 订单录入成功，已同步云端');
+        });
+
+        document.getElementById('inventoryForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const brand = document.getElementById('invBrand').value;
+            const category = document.getElementById('invCategory').value;
+            const name = document.getElementById('invName').value;
+            const price = parseFloat(document.getElementById('invPrice').value);
+            const qty = parseInt(document.getElementById('invQty').value);
+            
+            window.currentData.stats.cost += price;
+            if(!window.currentData.logs) window.currentData.logs = [];
+            window.currentData.logs.unshift({ brand, category, name, qty, date: new Date().toLocaleDateString() });
+            if(window.currentData.logs.length > 20) window.currentData.logs.pop();
+            
+            await window.syncToCloud();
+            e.target.reset();
+            alert('✅ 物料入库成功，已同步云端');
+        });
+    </script>
+</body>
+</html>
